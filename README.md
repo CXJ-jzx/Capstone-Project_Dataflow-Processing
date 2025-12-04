@@ -525,7 +525,7 @@ rm -f /data/flink/elastic/metrics/history_metrics.log
 # 采集并决策
 for i in {1..8}; do
     /data/flink/elastic/collect_metrics.sh
-    sleep 5
+    sleep 10
 done
 
 # 运行决策
@@ -555,7 +555,7 @@ rm -f /data/flink/elastic/metrics/history_metrics.log
 # 采集并决策
 for i in {1..8}; do
     /data/flink/elastic/collect_metrics.sh
-    sleep 5
+    sleep 10
 done
 
 # 运行决策
