@@ -250,8 +250,6 @@ output/seismic_agg_result/
 - [十、启动后台弹性伸缩服务](#十启动后台弹性伸缩服务)
 - [十一、常用运维命令汇总](#十一常用运维命令汇总)
 - [十二、功能验证清单](#十二功能验证清单)
-- [十三、故障排查](#十三故障排查)
-- [十四、总结](#十四总结)
 
 ---
 
@@ -280,5 +278,476 @@ output/seismic_agg_result/
 └── savepoints/ # Savepoint 目录
 ```
 
+---
 
+## 二、前置准备
+
+### 2.1 确保 Flink 集群已启动
+
+```bash
+# 在 node01 上执行
+# 检查集群状态
+curl -s http://node01:8081/overview | jq .
+
+# 如果未启动，启动集群
+/opt/app/flink-1.17.2/bin/start-cluster.sh
+
+# 验证 TaskManager 数量（应该是 3 个）
+curl -s http://node01:8081/taskmanagers | jq '.taskmanagers | length'
+```
+
+### 2.2 确保弹性伸缩脚本已部署
+
+```Bash
+# 检查脚本文件
+ls -la /data/flink/elastic/
+
+# 确保脚本有执行权限
+chmod +x /data/flink/elastic/*.sh
+```
+
+---
+## 三、启动数据源（Socket）
+### 3.1 在 node02 上启动 nc 监听
+
+```bash
+# SSH 登录到 node02
+ssh root@node02
+
+# 启动 nc 监听 9999 端口（手动输入模式）
+nc -lk 9999
+```
+
+### 3.2 或使用自动数据生成（可选）
+
+```bash
+如果需要自动生成数据流，在 node02 上执行：
+#自动生成数据（每秒约 10 条）
+(while true; do 
+    echo "hello world flink test $(date +%N)"
+    sleep 0.1
+done) | nc -lk 9999
+```
+
+
+## 四、提交 Flink 作业
+
+### 4.1 在 node01 上提交 WordCount 作业
+
+```bash
+# 重新提交 WordCount 作业
+JOB_OUTPUT=$(/opt/app/flink-1.17.2/bin/flink run -d \
+    -m node01:8081 \
+    -p 3 \
+    -c org.jzx.WordCount \
+    /opt/flink_jobs/wordcount.jar 2>&1)
+
+echo "${JOB_OUTPUT}"
+```
+
+预期输出：
+```text
+Job has been submitted with JobID <32位十六进制ID>
+```
+---
+
+### 4.2 提取 Job ID
+
+```bash
+# 提取新的 Job ID
+NEW_JOB_ID=$(echo "${JOB_OUTPUT}" | grep -oE '[a-f0-9]{32}' | tail -1)
+echo "新 Job ID: ${NEW_JOB_ID}"
+```
+
+### 4.3 验证作业状态
+```bash
+# 查看所有作业
+curl -s http://node01:8081/jobs | jq .
+
+# 查看作业详情
+curl -s http://node01:8081/jobs/${JOB_ID} | jq '{id, name, state}'
+```
+
+预期输出：
+```json
+{
+  "jobs": [
+    {
+      "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "status": "RUNNING"
+    }
+  ]
+}
+```
+
+## 五、更新弹性伸缩配置
+
+### 5.1 更新 Job ID 到配置文件
+
+```bash
+# 方法1：使用 sed 自动更新
+sed -i "s/^FLINK_JOB_ID=.*/FLINK_JOB_ID=${JOB_ID}/" /data/flink/elastic/conf/elastic.conf
+
+# 验证更新结果
+grep "FLINK_JOB_ID" /data/flink/elastic/conf/elastic.conf
+```
+
+### 5.2 或手动编辑配置文件
+
+```bash
+# 方法2：手动编辑
+vim /data/flink/elastic/conf/elastic.conf
+
+# 修改 FLINK_JOB_ID 行为：
+# FLINK_JOB_ID=<你的Job ID>
+```
+
+### 5.3 完整配置文件参考
+
+```bash
+# 查看当前配置
+cat /data/flink/elastic/conf/elastic.conf
+```
+配置内容：
+```bash
+
+# Flink集群配置
+FLINK_REST_URL=http://node01:8081
+FLINK_BIN_PATH=/opt/app/flink-1.17.2/bin
+JOB_MANAGER_IP=node01
+
+# TM 配置
+TASK_MANAGER_MIN_NUM=3
+TASK_MANAGER_MAX_NUM=6
+SLOTS_PER_TM=2
+
+# 任务配置
+FLINK_JOB_ID=<你的Job ID>
+JOB_JAR=/opt/flink_jobs/wordcount.jar
+JOB_MAIN_CLASS=org.jzx.WordCount
+JOB_ARGS=
+
+# 并行度配置
+PARALLELISM_MIN=3
+PARALLELISM_MAX=12
+
+# 弹性触发阈值
+THROUGHPUT_UPPER=1000
+THROUGHPUT_LOWER=200
+CPU_LOAD_UPPER=0.80
+CPU_LOAD_LOWER=0.30
+TRIGGER_DURATION=30
+
+# 目录配置
+LOG_DIR=/data/flink/elastic/log
+METRICS_DIR=/data/flink/elastic/metrics
+SAVEPOINT_DIR=/data/flink/elastic/savepoints
+
+```
+
+## 六、测试指标采集
+### 6.1 输入测试数据
+在 node02 的 nc 终端 中输入：
+
+```text
+hello world
+hello flink
+test elastic scaling
+```
+---
+
+### 6.2 测试采集脚本
+```bash
+# 在 node01 上执行
+# 单次采集测试
+/data/flink/elastic/collect_metrics.sh
+```
+预期输出：
+---
+```text
+throughput=10/s | cpu=0.0065 | tm=3 | records=15
+```
+
+### 6.3 多次采集（积累样本）
+```bash
+# 连续采集 10 次（防抖机制需要至少 3 个样本）
+for i in {1..10}; do
+    echo "--- 采集第 $i 次 ($(date '+%H:%M:%S')) ---"
+    /data/flink/elastic/collect_metrics.sh
+    sleep 5
+done
+```
+
+---
+### 6.4 查看历史指标
+```bash
+# 查看采集的历史数据
+cat /data/flink/elastic/metrics/history_metrics.log
+```
+预期输出：
+---
+```text
+1764458303,throughput:10,cpu:0.0070
+1764458308,throughput:12,cpu:0.0068
+1764458314,throughput:15,cpu:0.0072
+```
+## 七、测试弹性决策
+
+### 7.1 运行决策脚本
+```bash
+# 执行决策
+/data/flink/elastic/elastic_decision.sh
+```
+---
+### 7.2 查看决策日志
+```bash
+# 查看决策日志
+tail -20 /data/flink/elastic/log/elastic_schedule.log
+```
+预期输出（正常情况）：
+---
+```text
+[2025-11-30 12:00:00] ========== 开始决策 ==========
+[2025-11-30 12:00:00] 当前状态: 并行度=3, TM数量=3
+[2025-11-30 12:00:00] 各项指标正常，无需调整
+```
+
+## 八、测试扩缩容功能
+### 8.1 测试缩容（提高阈值）
+
+```bash
+# 临时调低阈值以触发缩容
+sed -i 's/CPU_LOAD_LOWER=.*/CPU_LOAD_LOWER=0.50/' /data/flink/elastic/conf/elastic.conf
+
+# 清理历史数据
+rm -f /data/flink/elastic/metrics/history_metrics.log
+
+# 采集并决策
+for i in {1..8}; do
+    /data/flink/elastic/collect_metrics.sh
+    sleep 5
+done
+
+# 运行决策
+/data/flink/elastic/elastic_decision.sh
+
+# 查看结果
+tail -10 /data/flink/elastic/log/elastic_schedule.log
+
+```
+
+预期输出：
+---
+```text
+[2025-11-30 12:00:00] CPU 负载低于下限，触发 TM 缩容
+[2025-11-30 12:00:00] TM 数量已达下限 (3/3)
+```
+
+### 8.2 测试扩容（降低阈值）
+```bash
+# 临时调低扩容阈值
+sed -i 's/CPU_LOAD_UPPER=.*/CPU_LOAD_UPPER=0.005/' /data/flink/elastic/conf/elastic.conf
+sed -i 's/CPU_LOAD_LOWER=.*/CPU_LOAD_LOWER=0.001/' /data/flink/elastic/conf/elastic.conf
+
+# 清理历史数据
+rm -f /data/flink/elastic/metrics/history_metrics.log
+
+# 采集并决策
+for i in {1..8}; do
+    /data/flink/elastic/collect_metrics.sh
+    sleep 5
+done
+
+# 运行决策
+/data/flink/elastic/elastic_decision.sh
+
+# 查看结果
+tail -10 /data/flink/elastic/log/elastic_schedule.log
+```
+
+预期输出：
+---
+```text
+[2025-11-30 12:00:00] CPU 负载超过上限，触发 TM 扩容
+[2025-11-30 12:00:00] 在 node02 启动新 TM...
+[2025-11-30 12:00:00] node02 新增 TM，当前集群总数: 4
+```
+
+### 8.3 恢复正常配置
+```bash
+# 恢复正式阈值配置
+cat > /data/flink/elastic/conf/elastic.conf << 'EOF'
+# Flink集群配置
+FLINK_REST_URL=http://node01:8081
+FLINK_BIN_PATH=/opt/app/flink-1.17.2/bin
+JOB_MANAGER_IP=node01
+
+# TM 配置
+TASK_MANAGER_MIN_NUM=3
+TASK_MANAGER_MAX_NUM=6
+SLOTS_PER_TM=2
+
+# 任务配置
+FLINK_JOB_ID=<替换为你的Job ID>
+JOB_JAR=/opt/flink_jobs/wordcount.jar
+JOB_MAIN_CLASS=org.jzx.WordCount
+JOB_ARGS=
+
+# 并行度配置
+PARALLELISM_MIN=3
+PARALLELISM_MAX=12
+
+# 弹性触发阈值
+THROUGHPUT_UPPER=1000
+THROUGHPUT_LOWER=200
+CPU_LOAD_UPPER=0.80
+CPU_LOAD_LOWER=0.30
+TRIGGER_DURATION=30
+
+# 目录配置
+LOG_DIR=/data/flink/elastic/log
+METRICS_DIR=/data/flink/elastic/metrics
+SAVEPOINT_DIR=/data/flink/elastic/savepoints
+EOF
+
+echo "配置已恢复"
+```
+
+## 九、验证扩缩容结果
+### 9.1 查看 TaskManager 数量
+```bash
+# 通过 REST API 查看
+curl -s http://node01:8081/taskmanagers | jq '.taskmanagers | length'
+
+# 查看 TM 详情
+curl -s http://node01:8081/taskmanagers | jq '.taskmanagers[] | {id, slotsNumber, freeSlots}'
+```
+### 9.2 查看各节点 TM 分布
+```bash
+# 检查各节点的 TaskManager 进程
+for node in node01 node02 node03; do
+    count=$(ssh -o ConnectTimeout=3 root@${node} "jps 2>/dev/null | grep -c TaskManagerRunner || echo 0")
+    echo "${node}: ${count} 个 TM"
+done
+```
+预期输出（扩容后）：
+---
+```text
+node01: 1 个 TM
+node02: 2 个 TM
+node03: 1 个 TM
+```
+### 9.3 查看集群总览
+```bash
+
+curl -s http://node01:8081/overview | jq '{
+  taskmanagers: .taskmanagers,
+  slots_total: .["slots-total"],
+  slots_available: .["slots-available"],
+  jobs_running: .["jobs-running"]
+}'
+
+```
+
+### 9.4阈值触发逻辑总结
+| 指标 | 条件 | 动作 |
+|------|------|------|
+| 吞吐量 > 1000/s | 持续 30 秒 | 增加并行度 (+2) |
+| 吞吐量 < 200/s | 持续 30 秒 | 减少并行度 (-1) |
+| CPU > 80% | 持续 30 秒 | 增加 TM (+1) |
+| CPU < 30% | 持续 30 秒 | 减少 TM (-1) |
+
+
+## 十、启动后台弹性伸缩服务
+### 10.1 启动服务
+```bash
+
+# 停止可能存在的旧进程
+pkill -f elastic_loop.sh 2>/dev/null
+
+# 清理历史数据
+rm -f /data/flink/elastic/metrics/history_metrics.log
+
+# 后台启动弹性伸缩服务
+nohup /data/flink/elastic/elastic_loop.sh > /dev/null 2>&1 &
+
+# 确认服务已启动
+ps aux | grep elastic_loop | grep -v grep
+
+```
+---
+### 10.2 实时监控日志
+```bash
+# 监控决策日志
+tail -f /data/flink/elastic/log/elastic_schedule.log
+```
+---
+### 10.3 停止服务
+```bash
+# 停止弹性伸缩服务
+pkill -f elastic_loop.sh
+
+# 确认已停止
+ps aux | grep elastic_loop
+```
+
+## 十一、常用运维命令汇总
+### 11.1 服务管理
+| 操作 | 命令 |
+|------|------|
+| 启动弹性伸缩服务 | `nohup /data/flink/elastic/elastic_loop.sh > /dev/null 2>&1 &` |
+| 停止弹性伸缩服务 | `pkill -f elastic_loop.sh` |
+| 查看服务状态 | `ps aux \| grep elastic_loop \| grep -v grep` |
+
+---
+### 11.2 日志查看
+| 日志类型 | 命令 |
+|----------|------|
+| 决策日志 | `tail -f /data/flink/elastic/log/elastic_schedule.log` |
+| 采集日志 | `tail -f /data/flink/elastic/log/collect_metrics.log` |
+| 告警日志 | `cat /data/flink/elastic/log/alert.log` |
+
+---
+### 11.3 指标查看
+| 操作 | 命令 |
+|------|------|
+| 查看历史指标 | `cat /data/flink/elastic/metrics/history_metrics.log` |
+| 手动采集一次 | `/data/flink/elastic/collect_metrics.sh` |
+
+---
+### 11.4 集群状态
+| 操作 | 命令 |
+|------|------|
+| 查看集群概览 | `curl -s http://node01:8081/overview \| jq .` |
+| 查看 TM 数量 | `curl -s http://node01:8081/taskmanagers \| jq '.taskmanagers \| length'` |
+| 查看作业状态 | `curl -s http://node01:8081/jobs \| jq .` |
+| 查看作业详情 | `curl -s http://node01:8081/jobs/<JOB_ID> \| jq '{state, name}'` |
+
+---
+### 11.5 Flink 集群管理
+| 操作 | 命令 |
+|------|------|
+| 启动集群 | `/opt/app/flink-1.17.2/bin/start-cluster.sh` |
+| 停止集群 | `/opt/app/flink-1.17.2/bin/stop-cluster.sh` |
+| 单独启动 TM | `/opt/app/flink-1.17.2/bin/taskmanager.sh start` |
+| 查看 Flink 进程 | `jps \| grep -E "TaskManager\|StandaloneSession"` |
+
+## 十二、功能验证清单
+
+| 序号 | 测试项 | 验证方法 | 预期结果 |
+|:----:|--------|----------|----------|
+| 1 | 集群启动 | `curl http://node01:8081/overview` | 3 个 TM，6 个 Slots |
+| 2 | 作业提交 | `flink run -d ...` | Job 状态为 RUNNING |
+| 3 | 指标采集 | `/data/flink/elastic/collect_metrics.sh` | 显示吞吐量和 CPU |
+| 4 | 防抖机制 | 查看日志 | 需要 3+ 样本才触发 |
+| 5 | TM 缩容 | 降低 CPU_LOAD_LOWER | TM 数量减少 |
+| 6 | TM 扩容 | 降低 CPU_LOAD_UPPER | TM 数量增加 |
+| 7 | 下限保护 | 持续触发缩容 | 保持最少 3 个 TM |
+| 8 | 上限保护 | 持续触发扩容 | 最多 6 个 TM |
+
+---
+> 📝 **文档版本：** v1.0  
+> 📅 **更新日期：** 2025-11-30  
+> 🔧 **Flink 版本：** 1.17.2  
+> 🖥️ **部署模式：** Standalone
 
