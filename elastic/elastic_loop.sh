@@ -10,25 +10,25 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "${LOG_FILE}"
 }
 
-log "=== Flink µ¯ÐÔÉìËõ·þÎñÆô¶¯ ==="
-log "ÅäÖÃ: TM·¶Î§=${TASK_MANAGER_MIN_NUM}-${TASK_MANAGER_MAX_NUM}, ²¢ÐÐ¶È·¶Î§=${PARALLELISM_MIN}-${PARALLELISM_MAX}"
+log "=== Flink å¼¹æ€§ä¼¸ç¼©æœåŠ¡å¯åŠ¨ ==="
+log "é…ç½®: TMèŒƒå›´=${TASK_MANAGER_MIN_NUM}-${TASK_MANAGER_MAX_NUM}, å¹¶è¡Œåº¦èŒƒå›´=${PARALLELISM_MIN}-${PARALLELISM_MAX}"
 
-# ÓÅÑÅÍË³ö´¦Àí
+# ä¼˜é›…é€€å‡ºå¤„ç†
 cleanup() {
-    log "=== µ¯ÐÔÉìËõ·þÎñÍ£Ö¹ ==="
+    log "=== å¼¹æ€§ä¼¸ç¼©æœåŠ¡åœæ­¢ ==="
     exit 0
 }
 trap cleanup SIGTERM SIGINT
 
 while true; do
-    # ²É¼¯Ö¸±ê
+    # é‡‡é›†æŒ‡æ ‡
     if /data/flink/elastic/collect_metrics.sh >> "${LOG_FILE}" 2>&1; then
-        # Ö´ÐÐ¾ö²ß
+        # æ‰§è¡Œå†³ç­–
         /data/flink/elastic/elastic_decision.sh >> "${LOG_FILE}" 2>&1 || {
-            log "ERROR: ¾ö²ß½Å±¾Ö´ÐÐÊ§°Ü"
+            log "ERROR: å†³ç­–è„šæœ¬æ‰§è¡Œå¤±è´¥"
         }
     else
-        log "ERROR: Ö¸±ê²É¼¯Ê§°Ü£¬Ìø¹ý±¾ÂÖ¾ö²ß"
+        log "ERROR: æŒ‡æ ‡é‡‡é›†å¤±è´¥ï¼Œè·³è¿‡æœ¬è½®å†³ç­–"
     fi
     
     sleep 5
