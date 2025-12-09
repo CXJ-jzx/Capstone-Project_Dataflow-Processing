@@ -525,7 +525,7 @@ rm -f /data/flink/elastic/metrics/history_metrics.log
 # 采集并决策
 for i in {1..8}; do
     /data/flink/elastic/collect_metrics.sh
-    sleep 5
+    sleep 10
 done
 
 # 运行决策
@@ -555,7 +555,7 @@ rm -f /data/flink/elastic/metrics/history_metrics.log
 # 采集并决策
 for i in {1..8}; do
     /data/flink/elastic/collect_metrics.sh
-    sleep 5
+    sleep 10
 done
 
 # 运行决策
@@ -744,6 +744,9 @@ ps aux | grep elastic_loop
 | 6 | TM 扩容 | 降低 CPU_LOAD_UPPER | TM 数量增加 |
 | 7 | 下限保护 | 持续触发缩容 | 保持最少 3 个 TM |
 | 8 | 上限保护 | 持续触发扩容 | 最多 6 个 TM |
+
+---
+>⚠ **collect_metrics.sh:** 要根据具体的flink中算子逻辑来确定到底从source的out还是sink的in来读取throughput
 
 ---
 > 📝 **文档版本：** v1.0  
