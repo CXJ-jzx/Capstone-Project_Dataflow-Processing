@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package com.example.seismic;
+
+option java_package = "com.example.seismic";
+option java_outer_classname = "SeismicDataProto";
+
+message SeismicRecord {
+  // 元数据字段
+  string sensor_id = 1;
+  int64 collect_timestamp = 2; // 毫秒级时间戳
+
+  // 时空特征字段
+  double longitude = 3;
+  double latitude = 4;
+  int32 depth = 5; // 传感器深度，单位米
+
+  // 地震波核心字段
+  float seismic_amplitude = 6; // 地震波幅值
+  int32 frequency = 7; // 采样频率，单位Hz
+  string phase_type = 8; // 地震波类型, e.g., "P", "S", "N" (Noise)
+
+  // 状态字段
+  int32 data_quality = 9; // 0=无效, 1=有效
+  int32 network_status = 10; // 网络信号强度 0-5
+}
+
+message SeismicAggRecord {
+  string sensor_id = 1;
+  int64 window_start_ts = 2; // 窗口开始时间戳
+  int64 window_end_ts = 3;   // 窗口结束时间戳
+  float avg_amplitude = 4;   // 幅值均值
+  float max_amplitude = 5;   // 幅值最大值
+  float min_amplitude = 6;   // 幅值最小值
+  int32 p_phase_count = 7;   // P波数量
+  int32 s_phase_count = 8;   // S波数量
+  int32 n_phase_count = 9;   // 噪声数量
+}
