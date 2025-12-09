@@ -78,7 +78,7 @@
               <excludeGroupIds>org.apache.flink</excludeGroupIds>
               <transformers>
                 <transformer>
-                  <mainClass>org.jzx.version0.SeismicDataFlinkConsumer</mainClass>
+                  <mainClass>org.jzx.version1.SeismicDataFlinkConsumer</mainClass>
                 </transformer>
                 <transformer />
               </transformers>
@@ -118,7 +118,7 @@
               </filters>
               <transformers>
                 <transformer>
-                  <mainClass>org.jzx.version0.SeismicDataFlinkConsumer</mainClass>
+                  <mainClass>org.jzx.version2.SeismicDataFlinkConsumer</mainClass>
                 </transformer>
                 <transformer />
               </transformers>

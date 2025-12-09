@@ -1,4 +1,4 @@
-package org.jzx.version1;
+package org.jzx.version2;
 
 import com.example.seismic.SeismicDataProto.SeismicAggRecord;
 import com.example.seismic.SeismicDataProto.SeismicRecord;
@@ -41,6 +41,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.apache.flink.streaming.api.functions.source.RichParallelSourceFunction;
+import org.apache.flink.streaming.api.functions.source.SourceFunction;
 
 /**
  * 适配RocketMQ 5.3.0 + Flink 1.17.2 的完整版本
@@ -50,65 +52,52 @@ public class SeismicDataFlinkConsumer {
     /**
      * 优化后的RocketMQ Source：适配RocketMQ 5.3.0，移除过时方法
      */
-    public static class OptimizedRocketMQSource extends RichSourceFunction<SeismicRecord> implements CheckpointedFunction {
+    public static class OptimizedRocketMQSource extends RichParallelSourceFunction<SeismicRecord> implements CheckpointedFunction {
         private static final long serialVersionUID = 1L;
         private final AtomicBoolean isRunning = new AtomicBoolean(true);
-        private final AtomicInteger msgCount = new AtomicInteger(0);
-        private static final int MAX_MSG_NUM = 1000;
-        private DefaultMQPushConsumer consumer;
+        // 去掉 MAX_MSG_NUM 限制，改为无限运行
+
+        private transient DefaultMQPushConsumer consumer;
         private final String namesrvAddr;
         private final String topic;
-        private SourceContext<SeismicRecord> ctx;
-        private Map<MessageQueue, Long> offsetMap = new HashMap<>();
+        private transient SourceContext<SeismicRecord> ctx;
+
+        // Offset状态保存
+        private transient Map<MessageQueue, Long> offsetMap;
         private transient ListState<Map<MessageQueue, Long>> offsetState;
 
         public OptimizedRocketMQSource(String namesrvAddr, String topic) {
             this.namesrvAddr = namesrvAddr;
             this.topic = topic;
+            this.offsetMap = new HashMap<>();
         }
 
         @Override
         public void run(SourceContext<SeismicRecord> ctx) throws Exception {
             this.ctx = ctx;
-            consumer = new DefaultMQPushConsumer("seismic-flink-limited-group");
+
+            // Consumer Group 必须固定，以便多个并发 SubTask 能够负载均衡
+            consumer = new DefaultMQPushConsumer("seismic-elastic-consumer-group");
             consumer.setNamesrvAddr(namesrvAddr);
             consumer.setConsumeFromWhere(ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET);
-            // RocketMQ 5.3.0 配置消费超时（替换原setConsumeTimeout）
             consumer.setConsumeTimeout(3000L);
             consumer.setMaxReconsumeTimes(3);
             consumer.subscribe(topic, "*");
 
-            // 【修复1】RocketMQ 5.x 移除resetOffsetToSpecificTime，注释该逻辑（简化版无需恢复offset）
-            // if (!offsetMap.isEmpty()) {
-            //     consumer.resetOffset(offsetMap, false); // 5.x替代方法（可选）
-            // }
-
-            // 【修复2】RocketMQ 5.x 中MessageQueue从ConsumeConcurrentlyContext获取
             consumer.registerMessageListener((MessageListenerConcurrently) (msgs, context) -> {
+                if (!isRunning.get()) return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
+
                 synchronized (ctx.getCheckpointLock()) {
                     for (MessageExt msg : msgs) {
-                        if (msgCount.get() >= MAX_MSG_NUM) {
-                            cancel();
-                            return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
-                        }
-
-                        int currentCount = msgCount.incrementAndGet();
-                        System.out.println("📥 收到第" + currentCount + "条RocketMQ消息：msgId=" + msg.getMsgId());
                         try {
                             SeismicRecord record = SeismicRecord.parseFrom(msg.getBody());
                             ctx.collect(record);
-                            // 【修复3】从context获取MessageQueue，替代msg.getMessageQueue()
+
+                            // 更新 Offset
                             MessageQueue mq = context.getMessageQueue();
                             offsetMap.put(mq, msg.getQueueOffset() + 1);
                         } catch (Exception e) {
-                            System.err.println("⚠️ Protobuf解析失败（msgId=" + msg.getMsgId() + "）：" + e.getMessage());
-                            return ConsumeConcurrentlyStatus.CONSUME_SUCCESS;
-                        }
-
-                        if (currentCount >= MAX_MSG_NUM) {
-                            System.out.println("✅ 已消费" + MAX_MSG_NUM + "条数据，准备停止任务");
-                            cancel();
-                            break;
+                            // 忽略解析错误
                         }
                     }
                 }
@@ -117,13 +106,13 @@ public class SeismicDataFlinkConsumer {
 
             try {
                 consumer.start();
-                System.out.println("✅ RocketMQ消费者启动成功！NameServer=" + namesrvAddr + "，Topic=" + topic);
+                System.out.println("✅ RocketMQ Source 启动 (SubTask: " + getRuntimeContext().getIndexOfThisSubtask() + ")");
             } catch (MQClientException e) {
-                System.err.println("❌ RocketMQ启动失败！原因：" + e.getErrorMessage());
                 throw new RuntimeException("RocketMQ初始化失败", e);
             }
 
-            while (isRunning.get() && msgCount.get() < MAX_MSG_NUM) {
+            // 无限循环，直到 cancel() 被调用
+            while (isRunning.get()) {
                 Thread.sleep(1000);
             }
         }
@@ -133,30 +122,40 @@ public class SeismicDataFlinkConsumer {
             isRunning.set(false);
             if (consumer != null) {
                 consumer.shutdown();
-                System.out.println("🛑 RocketMQ消费者已关闭");
             }
-            if (ctx != null) {
-                ctx.close();
+        }
+
+        @Override
+        public void initializeState(FunctionInitializationContext context) throws Exception {
+            // 1. 【关键修复】无论是否是恢复模式，都必须先初始化对象！
+            this.offsetMap = new HashMap<>();
+
+            // 2. 获取状态句柄
+            offsetState = context.getOperatorStateStore().getListState(
+                    new ListStateDescriptor<>("rocketmq-offsets",
+                            TypeInformation.of(new TypeHint<Map<MessageQueue, Long>>() {})));
+
+            // 3. 如果是从 Checkpoint 恢复，则填充数据
+            if (context.isRestored()) {
+                for (Map<MessageQueue, Long> state : offsetState.get()) {
+                    // 此时 offsetMap 已经被 new HashMap<>() 了，所以不会报错
+                    offsetMap.putAll(state);
+                }
+                System.out.println("✅ 从Checkpoint恢复offset：" + offsetMap);
             }
         }
 
         @Override
         public void snapshotState(FunctionSnapshotContext context) throws Exception {
-            offsetState.clear();
-            offsetState.add(offsetMap);
-            System.out.println("📌 保存Checkpoint，当前offset：" + offsetMap);
-        }
-
-        @Override
-        public void initializeState(FunctionInitializationContext context) throws Exception {
-            offsetState = context.getOperatorStateStore().getListState(
-                    new ListStateDescriptor<>("rocketmq-offsets",
-                            TypeInformation.of(new TypeHint<Map<MessageQueue, Long>>() {})));
-            if (context.isRestored()) {
-                for (Map<MessageQueue, Long> state : offsetState.get()) {
-                    offsetMap.putAll(state);
+            if (offsetState != null) {
+                offsetState.clear();
+                // 4. 【双重保险】防止 offsetMap 为 null (虽然 initializeState 修复后应该不会为 null 了)
+                if (offsetMap != null) {
+                    offsetState.add(offsetMap);
+                } else {
+                    // 如果万一还是 null，存一个空 Map，避免 crash
+                    offsetState.add(new HashMap<>());
                 }
-                System.out.println("✅ 从Checkpoint恢复offset：" + offsetMap);
             }
         }
     }
@@ -208,7 +207,7 @@ public class SeismicDataFlinkConsumer {
     public static void main(String[] args) throws Exception {
         // 1. Flink环境初始化
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.setParallelism(3);
+        //env.setParallelism(3);
         env.enableCheckpointing(10000);
         env.getCheckpointConfig().setCheckpointTimeout(60000);
         // 【修复5】Flink 1.17.2 直接使用CheckpointingMode枚举，无需CheckpointConfig前缀
@@ -219,7 +218,7 @@ public class SeismicDataFlinkConsumer {
         String rocketMQTopic = "seismic-data-topic";
         DataStream<SeismicRecord> seismicStream = env.addSource(
                 new OptimizedRocketMQSource(rocketMQNamesrv, rocketMQTopic)
-        ).name("Optimized-RocketMQ-Source");
+        ).name("Optimized-RocketMQ-Source").disableChaining();
 
         // 3. 过滤无效数据
         DataStream<SeismicRecord> validSeismicStream = seismicStream

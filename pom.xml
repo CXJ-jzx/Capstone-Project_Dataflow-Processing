@@ -199,7 +199,7 @@
                             <!-- 保留主类（指定你的程序入口） -->
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>org.jzx.version0.SeismicDataFlinkConsumer</mainClass> <!-- 你的主类全路径 -->
+                                    <mainClass>org.jzx.version1.SeismicDataFlinkConsumer</mainClass> <!-- 你的主类全路径 -->
                                 </transformer>
                                 <!-- 解决RocketMQ/Flink的SPI文件冲突 -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
@@ -246,7 +246,7 @@
                             <transformers>
                                 <!-- 指定主类，运行时无需指定-c参数 -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>org.jzx.version0.SeismicDataFlinkConsumer</mainClass>
+                                    <mainClass>org.jzx.version2.SeismicDataFlinkConsumer</mainClass>
                                 </transformer>
                                 <!-- 合并服务配置，避免SPI加载失败 -->
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
