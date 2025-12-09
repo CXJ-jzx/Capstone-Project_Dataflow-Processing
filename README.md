@@ -5,6 +5,10 @@
 3.当前版本（version1）针对 **RocketMQ 5.3.0** 和 **Flink 1.17.2** 进行了适配与性能优化。
 
 ---
+> version 1定量写入rocketmq，定量读出
+> version 2持续的写入rocketmq，持续读出，与扩缩容功能配合使用
+
+---
 
 # 🚀 项目亮点
 
