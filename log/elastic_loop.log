@@ -1,0 +1,69 @@
+[2025-11-30 12:05:27] === Flink µ¯ĞÔÉìËõ·şÎñÆô¶¯ ===
+[2025-11-30 12:05:27] ÅäÖÃ: TM·¶Î§=3-6, ²¢ĞĞ¶È·¶Î§=3-12
+Job æœªè¿è¡Œ
+[2025-11-30 12:05:27] ERROR: Ö¸±ê²É¼¯Ê§°Ü£¬Ìø¹ı±¾ÂÖ¾ö²ß
+Job æœªè¿è¡Œ
+[2025-11-30 12:05:32] ERROR: Ö¸±ê²É¼¯Ê§°Ü£¬Ìø¹ı±¾ÂÖ¾ö²ß
+Job æœªè¿è¡Œ
+[2025-11-30 12:05:37] ERROR: Ö¸±ê²É¼¯Ê§°Ü£¬Ìø¹ı±¾ÂÖ¾ö²ß
+Job æœªè¿è¡Œ
+[2025-11-30 12:05:42] ERROR: Ö¸±ê²É¼¯Ê§°Ü£¬Ìø¹ı±¾ÂÖ¾ö²ß
+Job æœªè¿è¡Œ
+[2025-11-30 12:05:47] ERROR: Ö¸±ê²É¼¯Ê§°Ü£¬Ìø¹ı±¾ÂÖ¾ö²ß
+Job æœªè¿è¡Œ
+[2025-11-30 12:05:52] ERROR: Ö¸±ê²É¼¯Ê§°Ü£¬Ìø¹ı±¾ÂÖ¾ö²ß
+Job æœªè¿è¡Œ
+[2025-11-30 12:05:57] ERROR: Ö¸±ê²É¼¯Ê§°Ü£¬Ìø¹ı±¾ÂÖ¾ö²ß
+Job æœªè¿è¡Œ
+[2025-11-30 12:06:02] ERROR: Ö¸±ê²É¼¯Ê§°Ü£¬Ìø¹ı±¾ÂÖ¾ö²ß
+Job æœªè¿è¡Œ
+[2025-11-30 12:06:07] ERROR: Ö¸±ê²É¼¯Ê§°Ü£¬Ìø¹ı±¾ÂÖ¾ö²ß
+Job æœªè¿è¡Œ
+[2025-11-30 12:06:12] ERROR: Ö¸±ê²É¼¯Ê§°Ü£¬Ìø¹ı±¾ÂÖ¾ö²ß
+throughput=0/s | cpu=0.0117 | tm=3 | records=16668
+throughput=0/s | cpu=0.0117 | tm=3 | records=16668
+[2025-11-30 12:06:26] === Flink µ¯ĞÔÉìËõ·şÎñÆô¶¯ ===
+[2025-11-30 12:06:26] ÅäÖÃ: TM·¶Î§=3-6, ²¢ĞĞ¶È·¶Î§=3-12
+throughput=0/s | cpu=0.0117 | tm=3 | records=16668
+throughput=6543/s | cpu=0.0128 | tm=3 | records=29754
+throughput=0/s | cpu=0.0128 | tm=3 | records=29754
+throughput=0/s | cpu=0.0128 | tm=3 | records=29754
+throughput=0/s | cpu=0.0128 | tm=3 | records=29754
+throughput=6498/s | cpu=0.0121 | tm=3 | records=42750
+throughput=0/s | cpu=0.0121 | tm=3 | records=42750
+throughput=0/s | cpu=0.0121 | tm=3 | records=42750
+throughput=0/s | cpu=0.0121 | tm=3 | records=42750
+throughput=6588/s | cpu=0.0130 | tm=3 | records=55926
+throughput=0/s | cpu=0.0130 | tm=3 | records=55926
+throughput=0/s | cpu=0.0130 | tm=3 | records=55926
+throughput=0/s | cpu=0.0130 | tm=3 | records=55926
+throughput=6636/s | cpu=0.0139 | tm=3 | records=69198
+throughput=0/s | cpu=0.0139 | tm=3 | records=69198
+throughput=0/s | cpu=0.0139 | tm=3 | records=69198
+throughput=0/s | cpu=0.0139 | tm=3 | records=69198
+throughput=6603/s | cpu=0.0132 | tm=3 | records=82404
+throughput=0/s | cpu=0.0132 | tm=3 | records=82404
+throughput=0/s | cpu=0.0132 | tm=3 | records=82404
+throughput=0/s | cpu=0.0132 | tm=3 | records=82404
+throughput=6573/s | cpu=0.0125 | tm=3 | records=95550
+throughput=0/s | cpu=0.0125 | tm=3 | records=95550
+throughput=0/s | cpu=0.0125 | tm=3 | records=95550
+throughput=0/s | cpu=0.0125 | tm=3 | records=95550
+throughput=6675/s | cpu=0.0114 | tm=3 | records=108900
+throughput=0/s | cpu=0.0114 | tm=3 | records=108900
+throughput=0/s | cpu=0.0114 | tm=3 | records=108900
+throughput=0/s | cpu=0.0114 | tm=3 | records=108900
+throughput=6549/s | cpu=0.0127 | tm=3 | records=121998
+throughput=0/s | cpu=0.0127 | tm=3 | records=121998
+throughput=0/s | cpu=0.0127 | tm=3 | records=121998
+throughput=0/s | cpu=0.0127 | tm=3 | records=121998
+throughput=6639/s | cpu=0.0119 | tm=3 | records=135276
+throughput=0/s | cpu=0.0119 | tm=3 | records=135276
+throughput=0/s | cpu=0.0119 | tm=3 | records=135276
+throughput=0/s | cpu=0.0119 | tm=3 | records=135276
+throughput=4408/s | cpu=0.0118 | tm=3 | records=148500
+throughput=0/s | cpu=0.0118 | tm=3 | records=148500
+throughput=0/s | cpu=0.0118 | tm=3 | records=148500
+throughput=0/s | cpu=0.0118 | tm=3 | records=148500
+[2025-11-30 12:08:17] === µ¯ĞÔÉìËõ·şÎñÍ£Ö¹ ===
+[2025-11-30 12:08:21] === µ¯ĞÔÉìËõ·şÎñÍ£Ö¹ ===
