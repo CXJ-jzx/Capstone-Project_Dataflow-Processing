@@ -70,6 +70,32 @@
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+---
+### 1.4 项目结构
+
+```
+📁 src/main/java/org/jzx/cache/
+├── 📁 config/                          
+│   └── 📄 CacheConfig.java             ⚙️ 缓存配置类
+├── 📁 model/                           📦 数据模型层
+│   ├── 📄 CacheEntry.java              📦 缓存条目
+│   ├── 📄 CacheStats.java              📊 缓存统计
+│   ├── 📄 SpatialGrid.java             🗺️ 空间网格
+│   └── 📄 HistoryWindow.java           🕐 历史窗口
+├── 📁 core/                            🗄️ 缓存核心层
+│   ├── 📄 L1HotspotCache.java          🔥 L1热点缓存
+│   ├── 📄 L2TimeWindowCache.java       🕐 L2时间窗口缓存
+│   └── 📄 L3SpatialCache.java          🗺️ L3空间邻域缓存
+├── 📁 strategy/                        📐 策略层
+│   └── 📄 AdaptiveCapacityStrategy.java 📐 自适应容量策略
+├── 📁 controller/                      🎛️ 控制层
+│   ├── 📄 CacheController.java         🎛️ 缓存控制器
+│   └── 📄 CacheMetricsCollector.java   📊 指标收集器
+├── 📁 operator/                        ⚡ Flink算子层
+│   ├── 📄 CacheEnhancedProcessFunction.java  ⚡ 缓存增强处理
+│   └── 📄 CachedWindowAggFunction.java       📊 带缓存的窗口聚合
+└── 📄 SeismicCacheFlinkJob.java        🚀 主程序入口
+```
 
 ---
 
@@ -82,6 +108,13 @@
 | 🔥 L1 | 热点缓存 | 传感器最新数据 | LRU-K | 内存 (ConcurrentHashMap) |
 | 🕐 L2 | 时间窗口缓存 | 历史窗口聚合结果 | FIFO | Flink State |
 | 🗺️ L3 | 空间邻域缓存 | 空间网格聚合信息 | LRU | Flink State |
+
+
+---
+**注意：** 在整个逻辑中无论是哪一层缓存，缓存都和stats的操作对应，两者要同时操作；
+> **L1核心数据结构 ：** private final ConcurrentHashMap<String, CacheEntry<V>> cache;    // CacheEntry<V> 存储结构：CacheEntry<V> entry = new CacheEntry<>(key, value, ttl, k); 存的是一个传感器对应的lru-k的访问时间 ，里面维护了一个数组
+> **L2核心数据结构 ：** private final Map<String, LinkedList<HistoryWindow>> historyCache;    // hw的list从头插入，从尾部删除
+> **L3核心数据结构 ：** private final Map<String, SpatialGrid> gridCache;     //SpatialGrid以grid_id区分，grid_id又以gx，gy坐标区分
 
 ### 2.2 🔥 L1 热点缓存 (LRU-K 算法)
 
@@ -627,6 +660,11 @@ CacheConfig config = CacheConfig.builder()
     // 📊 自适应调节
     .targetHitRate(0.70)         // 目标命中率
     .evictionStrategy("LRU_K")   // 淘汰策略
+
+    // 启用去重
+    .deduplicationEnabled(true)           // 启用去重
+    .amplitudeChangeThreshold(0.5f)       // 振幅变化小于0.5视为相似
+    .timeIntervalThreshold(100L)          // 100ms内的相似数据不输出
     .build();
 ```
 
@@ -739,48 +777,3 @@ CacheConfig config = CacheConfig.builder()
 | 📊 多级淘汰 | 根据数据重要性实现差异化淘汰 |
 | 🔥 缓存预热 | 作业启动时从历史数据预热缓存 |
 
----
-
-## 📚 附录
-
-### A. 项目结构
-
-```
-📁 src/main/java/org/jzx/cache/
-├── 📁 config/                          
-│   └── 📄 CacheConfig.java             ⚙️ 缓存配置类
-├── 📁 model/                          
-│   ├── 📄 CacheEntry.java              📦 缓存条目
-│   ├── 📄 CacheStats.java              📊 缓存统计
-│   ├── 📄 SpatialGrid.java             🗺️ 空间网格
-│   └── 📄 HistoryWindow.java           🕐 历史窗口
-├── 📁 core/                           
-│   ├── 📄 L1HotspotCache.java          🔥 L1热点缓存
-│   ├── 📄 L2TimeWindowCache.java       🕐 L2时间窗口缓存
-│   └── 📄 L3SpatialCache.java          🗺️ L3空间邻域缓存
-├── 📁 strategy/                       
-│   └── 📄 AdaptiveCapacityStrategy.java 📐 自适应容量策略
-├── 📁 controller/                     
-│   ├── 📄 CacheController.java         🎛️ 缓存控制器
-│   └── 📄 CacheMetricsCollector.java   📊 指标收集器
-├── 📁 operator/                       
-│   ├── 📄 CacheEnhancedProcessFunction.java  ⚡ 缓存增强处理
-│   └── 📄 CachedWindowAggFunction.java       📊 带缓存的窗口聚合
-└── 📄 SeismicCacheFlinkJob.java        🚀 主程序入口
-```
-
-### B. 参考资料
-
-| 📚 资料 | 🔗 链接 |
-|--------|--------|
-| Apache Flink 官方文档 | https://flink.apache.org/docs/ |
-| LRU-K 算法论文 | "The LRU-K Page Replacement Algorithm" |
-| RocketMQ 官方文档 | https://rocketmq.apache.org/docs/ |
-
----
-
-> 📝 **文档版本历史**
-> 
-> | 版本 | 日期 | 修改内容 |
-> |------|------|----------|
-> | v1.0 | 2026-03-20 | 🎉 初始版本 |
