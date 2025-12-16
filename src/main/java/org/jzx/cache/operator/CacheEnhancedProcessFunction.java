@@ -46,6 +46,9 @@ public class CacheEnhancedProcessFunction
     private transient long processedCount;
     private transient long lastTuningCount;
     private transient long lastLogCount;
+    private transient long outputCount;      // 🆕 实际输出数量
+    private transient long skippedCount;     // 🆕 跳过数量
+
 
     // 异常检测阈值
     private final double temporalAnomalyThreshold = 0.5;  // 时间维度偏差阈值 50%
@@ -64,6 +67,8 @@ public class CacheEnhancedProcessFunction
         this.processedCount = 0;
         this.lastTuningCount = 0;
         this.lastLogCount = 0;
+        this.outputCount = 0;
+        this.skippedCount = 0;
 
         // 初始化 L2 State (按传感器ID存储历史窗口列表)
         MapStateDescriptor<String, LinkedList<HistoryWindow>> l2Desc =
@@ -85,6 +90,10 @@ public class CacheEnhancedProcessFunction
 
         int subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
         System.out.printf("✅ CacheEnhancedProcessFunction 初始化完成 (SubTask: %d)%n", subtaskIndex);
+        System.out.printf("   📋 去重配置: enabled=%s, amplitudeThreshold=%.2f, timeThreshold=%dms%n",
+                config.isDeduplicationEnabled(),
+                config.getAmplitudeChangeThreshold(),
+                config.getTimeIntervalThreshold());
     }
 
     @Override
@@ -94,13 +103,32 @@ public class CacheEnhancedProcessFunction
         processedCount++;
         String sensorId = record.getSensorId();
 
+        // ===== 🆕 步骤1: 判断是否需要跳过输出 (数据去重) =====
+        boolean shouldSkip = cacheController.shouldSkipOutput(record);
+
+        if (shouldSkip) {
+            skippedCount++;
+            // 不输出，但仍然需要更新缓存（可选）
+            // 如果不更新缓存，则用最早的数据作为基准
+            // 如果更新缓存，则用最新的数据作为基准
+            // 这里选择不更新，保持稳定的基准
+
+            // 周期性日志
+            if (processedCount - lastLogCount >= 10000) {
+                printProcessingLog0();
+                lastLogCount = processedCount;
+            }
+            return;  // ⭐ 跳过输出！
+        }
+
+        // ===== 步骤2: 使用缓存控制器处理记录 =====
         // 1. 使用缓存控制器处理记录 (L1缓存 + 异常检测)
         CacheProcessResult cacheResult = cacheController.processRecord(record);
 
         // 2. 更新Flink State中的L3空间缓存
         updateL3State(record);
 
-        // 3. 记录指标
+        // 3. 记录指标，更新统计
         cacheController.getMetricsCollector().incrementTotal();
         cacheController.getMetricsCollector().recordProcessed();
 
@@ -142,9 +170,23 @@ public class CacheEnhancedProcessFunction
         l3GridState.put(gridKey, grid);
     }
 
+
     /**
      * 输出处理日志
      */
+    private void printProcessingLog0() {
+        int subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
+        double skipRate = processedCount > 0
+                ? (double) skippedCount / processedCount * 100
+                : 0;
+        double hitRate = cacheController.getL1Stats().getHitRate() * 100;
+
+        System.out.printf(
+                "[SubTask-%d] 📊 处理: %d | 输出: %d | 跳过: %d (%.1f%%) | L1命中率: %.1f%%%n",
+                subtaskIndex, processedCount, outputCount, skippedCount, skipRate, hitRate
+        );
+    }
+
     private void printProcessingLog(CacheProcessResult lastResult) {
         int subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
         System.out.printf("[SubTask-%d] 已处理 %d 条 | L1命中率: %.2f%% | " +
@@ -163,7 +205,14 @@ public class CacheEnhancedProcessFunction
         // 输出最终统计
         if (cacheController != null) {
             int subtaskIndex = getRuntimeContext().getIndexOfThisSubtask();
+            double skipRate = processedCount > 0
+                    ? (double) skippedCount / processedCount * 100
+                    : 0;
             System.out.printf("%n===== [SubTask-%d] 缓存最终统计 =====%n", subtaskIndex);
+            System.out.printf("📥 总输入: %d%n", processedCount);
+            System.out.printf("📤 实际输出: %d%n", outputCount);
+            System.out.printf("⏭️ 跳过数量: %d (%.1f%%)%n", skippedCount, skipRate);
+            System.out.printf("📈 数据压缩率: %.1f%%%n", skipRate);
             System.out.println(cacheController.getL1Stats().report());
             System.out.println(cacheController.getL2Stats().report());
             System.out.println(cacheController.getL3Stats().report());
@@ -171,4 +220,5 @@ public class CacheEnhancedProcessFunction
             System.out.println("========================================\n");
         }
     }
+
 }

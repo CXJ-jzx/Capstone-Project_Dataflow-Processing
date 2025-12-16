@@ -50,6 +50,18 @@ public class CacheConfig implements Serializable {
     /** 时间衰减因子 (用于TD-LFU) */
     private double timeDecayFactor = 0.95;
 
+    // ============ 新增: 数据去重配置 ============
+    /** 是否启用数据去重 */
+    private boolean deduplicationEnabled = true;
+
+    /** 振幅变化阈值 (小于此值视为相似数据，不输出) */
+    private float amplitudeChangeThreshold = 0.5f;
+
+    /** 时间间隔阈值 (毫秒，小于此值且振幅相似则不输出) */
+    private long timeIntervalThreshold = 100L;
+
+
+
     // ============ 构造函数和Builder ============
     public CacheConfig() {}
 
@@ -70,8 +82,21 @@ public class CacheConfig implements Serializable {
         public Builder maxGrids(int n) { config.maxGrids = n; return this; }
         public Builder targetHitRate(double rate) { config.targetHitRate = rate; return this; }
         public Builder evictionStrategy(String s) { config.evictionStrategy = s; return this; }
+        public Builder deduplicationEnabled(boolean enabled) {
+            config.deduplicationEnabled = enabled;
+            return this;
+        }
+        public Builder amplitudeChangeThreshold(float threshold) {
+            config.amplitudeChangeThreshold = threshold;
+            return this;
+        }
+        public Builder timeIntervalThreshold(long threshold) {
+            config.timeIntervalThreshold = threshold;
+            return this;
+        }
 
         public CacheConfig build() { return config; }
+
     }
 
     // ============ Getters ============
@@ -91,6 +116,10 @@ public class CacheConfig implements Serializable {
     public double getAdjustmentRatio() { return adjustmentRatio; }
     public String getEvictionStrategy() { return evictionStrategy; }
     public double getTimeDecayFactor() { return timeDecayFactor; }
+
+    public boolean isDeduplicationEnabled() { return deduplicationEnabled; }
+    public float getAmplitudeChangeThreshold() { return amplitudeChangeThreshold; }
+    public long getTimeIntervalThreshold() { return timeIntervalThreshold; }
 
     // ============ Setters (用于动态调节) ============
     public void setL1MaxSize(int l1MaxSize) { this.l1MaxSize = l1MaxSize; }

@@ -71,9 +71,10 @@ public class HistoryWindow implements Serializable {
                 .build();
     }
 
+
     /**
      * 计算与历史基线的偏差 (用于异常检测)
-     */
+     * */
     public double calculateDeviation(float currentAmplitude) {
         if (avgAmplitude == 0) return 0;
         return Math.abs(currentAmplitude - avgAmplitude) / Math.abs(avgAmplitude);

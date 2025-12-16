@@ -272,4 +272,83 @@ public class CacheController implements Serializable {
             return spatialDeviation > (1 + threshold);
         }
     }
+
+    /**
+     * 同一传感器短时间内去重逻辑
+     */
+    /**
+     * 🆕 判断是否应该跳过输出 (数据去重)
+     */
+    public boolean shouldSkipOutput(SeismicRecord record) {
+        if (!config.isDeduplicationEnabled()) {
+            return false;  // 未启用去重，不跳过
+        }
+
+        String sensorId = record.getSensorId();
+        SeismicRecord cached = l1Cache.get(sensorId);
+
+        if (cached == null) {
+            return false;  // 缓存未命中，不跳过（新数据要输出）
+        }
+
+        // 计算振幅变化
+        float amplitudeDiff = Math.abs(
+                record.getSeismicAmplitude() - cached.getSeismicAmplitude()
+        );
+
+        // 计算时间间隔
+        long timeDiff = record.getCollectTimestamp() - cached.getCollectTimestamp();
+
+        // 判断是否为相似数据
+        boolean isAmplitudeSimilar = amplitudeDiff < config.getAmplitudeChangeThreshold();
+        boolean isTimeClose = timeDiff < config.getTimeIntervalThreshold();
+
+        // 振幅变化小 且 时间间隔短 → 跳过输出
+        return isAmplitudeSimilar && isTimeClose;
+    }
+
+    /**
+     * 🆕 获取与上一条数据的变化信息
+     */
+    public DataChangeInfo getDataChangeInfo(SeismicRecord record) {
+        String sensorId = record.getSensorId();
+        SeismicRecord cached = l1Cache.get(sensorId);
+
+        DataChangeInfo info = new DataChangeInfo();
+
+        if (cached != null) {
+            info.setHasPrevious(true);
+            info.setAmplitudeChange(
+                    record.getSeismicAmplitude() - cached.getSeismicAmplitude()
+            );
+            info.setTimeDiff(
+                    record.getCollectTimestamp() - cached.getCollectTimestamp()
+            );
+            info.setPreviousAmplitude(cached.getSeismicAmplitude());
+        } else {
+            info.setHasPrevious(false);
+        }
+
+        return info;
+    }
+
+    /**
+     * 🆕 数据变化信息类
+     */
+    public static class DataChangeInfo implements Serializable {
+        private boolean hasPrevious;
+        private float amplitudeChange;
+        private long timeDiff;
+        private float previousAmplitude;
+
+        // Getters and Setters
+        public boolean hasPrevious() { return hasPrevious; }
+        public void setHasPrevious(boolean hasPrevious) { this.hasPrevious = hasPrevious; }
+        public float getAmplitudeChange() { return amplitudeChange; }
+        public void setAmplitudeChange(float amplitudeChange) { this.amplitudeChange = amplitudeChange; }
+        public long getTimeDiff() { return timeDiff; }
+        public void setTimeDiff(long timeDiff) { this.timeDiff = timeDiff; }
+        public float getPreviousAmplitude() { return previousAmplitude; }
+        public void setPreviousAmplitude(float previousAmplitude) { this.previousAmplitude = previousAmplitude; }
+    }
 }

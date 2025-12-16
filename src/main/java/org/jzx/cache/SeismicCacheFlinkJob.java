@@ -55,7 +55,7 @@ public class SeismicCacheFlinkJob {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
         // 设置并行度
-        env.setParallelism(3);
+        //env.setParallelism(3);
 
         // 启用 Checkpoint
         env.enableCheckpointing(30000); // 30秒
@@ -75,25 +75,36 @@ public class SeismicCacheFlinkJob {
                 .maxGrids(1000)              // 最多1000个网格
                 .targetHitRate(0.70)         // 目标命中率70%
                 .evictionStrategy("LRU_K")   // 使用LRU-K淘汰策略
+                .deduplicationEnabled(true)           // 启用去重
+                .amplitudeChangeThreshold(0.5f)       // 振幅变化小于0.5视为相似
+                .timeIntervalThreshold(100L)          // 100ms内的相似数据不输出
                 .build();
 
         System.out.println("========================================");
         System.out.println("    地震数据流处理作业 (带缓存优化)      ");
         System.out.println("========================================");
         System.out.println("缓存配置:");
-        System.out.printf("  - L1缓存容量: %d, LRU-K: %d, TTL: %dms%n",
+        System.out.printf("  - L1缓存3666666666容量: %d, LRU-K: %d, TTL: %dms%n",
                 cacheConfig.getL1MaxSize(), cacheConfig.getLruK(), cacheConfig.getL1TtlMs());
         System.out.printf("  - L2历史窗口数: %d%n", cacheConfig.getMaxHistoryWindows());
         System.out.printf("  - L3网格大小: %.4f度, 邻域半径: %d%n",
                 cacheConfig.getSpatialGridSize(), cacheConfig.getNeighborRadius());
         System.out.printf("  - 目标命中率: %.0f%%%n", cacheConfig.getTargetHitRate() * 100);
+        System.out.println("🆕 去重配置:");
+        System.out.printf("  - 启用去重: %s%n", cacheConfig.isDeduplicationEnabled());
+        System.out.printf("  - 振幅变化阈值: %.2f%n", cacheConfig.getAmplitudeChangeThreshold());
+        System.out.printf("  - 时间间隔阈值: %dms%n", cacheConfig.getTimeIntervalThreshold());
         System.out.println("========================================\n");
 
         // ============ 3. 创建数据源 ============
+        /*
         DataStream<SeismicRecord> sourceStream = env.addSource(
                 new OptimizedRocketMQSource(ROCKETMQ_NAMESRV, ROCKETMQ_TOPIC, CONSUMER_GROUP)
         ).name("RocketMQ-Source").setParallelism(1);
-
+        */
+        DataStream<SeismicRecord> sourceStream = env.addSource(
+                new OptimizedRocketMQSource(ROCKETMQ_NAMESRV, ROCKETMQ_TOPIC, CONSUMER_GROUP)
+        ).name("RocketMQ-Source");
         // ============ 4. 数据过滤 ============
         DataStream<SeismicRecord> validStream = sourceStream
                 .filter(record -> {

@@ -124,7 +124,7 @@ public class L3SpatialCache implements Serializable {
         double neighborhoodAvg = getNeighborhoodAvgAmplitude(
                 record.getLongitude(),
                 record.getLatitude()
-        );
+        ) - record.getSeismicAmplitude() ;
 
         if (neighborhoodAvg == 0) {
             return false;
